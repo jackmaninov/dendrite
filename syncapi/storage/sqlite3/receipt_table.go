@@ -40,7 +40,10 @@ const upsertReceipt = "" +
 	" (id, room_id, receipt_type, user_id, event_id, receipt_ts)" +
 	" VALUES ($1, $2, $3, $4, $5, $6)" +
 	" ON CONFLICT (room_id, receipt_type, user_id)" +
-	" DO UPDATE SET id = $7, event_id = $8, receipt_ts = $9"
+	" DO UPDATE SET id = CASE" +
+	"   WHEN syncapi_receipts.event_id != excluded.event_id THEN excluded.id" +
+	"   ELSE syncapi_receipts.id" +
+	" END, event_id = excluded.event_id, receipt_ts = excluded.receipt_ts"
 
 const selectRoomReceipts = "" +
 	"SELECT id, room_id, receipt_type, user_id, event_id, receipt_ts" +
@@ -90,12 +93,13 @@ func NewSqliteReceiptsTable(db *sql.DB, streamID *StreamIDStatements) (tables.Re
 
 // UpsertReceipt creates new user receipts
 func (r *receiptStatements) UpsertReceipt(ctx context.Context, txn *sql.Tx, roomId, receiptType, userId, eventId string, timestamp spec.Timestamp) (pos types.StreamPosition, err error) {
+	// Always generate a new ID - the CASE expression in SQL will decide whether to use it
 	pos, err = r.streamIDStatements.nextReceiptID(ctx, txn)
 	if err != nil {
 		return
 	}
 	stmt := sqlutil.TxStmt(txn, r.upsertReceipt)
-	_, err = stmt.ExecContext(ctx, pos, roomId, receiptType, userId, eventId, timestamp, pos, eventId, timestamp)
+	_, err = stmt.ExecContext(ctx, pos, roomId, receiptType, userId, eventId, timestamp)
 	return
 }
 

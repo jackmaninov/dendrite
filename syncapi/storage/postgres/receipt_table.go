@@ -43,7 +43,10 @@ const upsertReceipt = "" +
 	" (room_id, receipt_type, user_id, event_id, receipt_ts)" +
 	" VALUES ($1, $2, $3, $4, $5)" +
 	" ON CONFLICT (room_id, receipt_type, user_id)" +
-	" DO UPDATE SET id = nextval('syncapi_receipt_id'), event_id = $4, receipt_ts = $5" +
+	" DO UPDATE SET id = CASE" +
+	"   WHEN syncapi_receipts.event_id != EXCLUDED.event_id THEN nextval('syncapi_receipt_id')" +
+	"   ELSE syncapi_receipts.id" +
+	" END, event_id = EXCLUDED.event_id, receipt_ts = EXCLUDED.receipt_ts" +
 	" RETURNING id"
 
 const selectRoomReceipts = "" +
