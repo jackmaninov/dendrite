@@ -323,6 +323,14 @@ func (r *Joiner) performJoinRoomByID(
 	}
 	req.Content["membership"] = spec.Join
 	if authorisedVia, aerr := r.populateAuthorisedViaUserForRestrictedJoin(ctx, req, senderID); aerr != nil {
+		// Check if this is a M_FORBIDDEN error (user not in allowed spaces/rooms).
+		// These should return HTTP 403 so appservice bridges can retry with an invite.
+		var matrixErr spec.MatrixError
+		if errors.As(aerr, &matrixErr) && matrixErr.ErrCode == spec.ErrorForbidden {
+			return "", "", rsAPI.ErrNotAllowed{Err: aerr}
+		}
+		// All other errors (database errors, InternalServerError, M_UNABLE_TO_AUTHORISE_JOIN, etc.)
+		// are returned as-is and will become HTTP 500
 		return "", "", aerr
 	} else if authorisedVia != "" {
 		req.Content["join_authorised_via_users_server"] = authorisedVia
