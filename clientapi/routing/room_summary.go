@@ -87,13 +87,14 @@ func GetRoomSummary(
 	// Check access control (world-readable or user membership)
 	userID, err := spec.NewUserID(device.UserID, true)
 	if err != nil {
+		util.GetLogger(ctx).WithError(err).Error("UserID is invalid")
 		return util.JSONResponse{
-			Code: http.StatusInternalServerError,
-			JSON: spec.InternalServerError{},
+			Code: http.StatusBadRequest,
+			JSON: spec.Unknown("Device UserID is invalid"),
 		}
 	}
 
-	canAccess, membership := checkRoomAccess(ctx, rsAPI, roomID, *userID, roomState)
+	canAccess, membership := checkRoomAccess(ctx, rsAPI, roomID, userID, roomState)
 	if !canAccess {
 		// Return 404 instead of 403 to not leak room existence
 		return util.JSONResponse{
@@ -121,8 +122,8 @@ func parseRoomIDOrAlias(ctx context.Context, roomIDOrAlias string, rsAPI api.Cli
 		return roomID.String(), nil
 	}
 
-	// Try parsing as room alias
-	roomAlias, err := spec.NewRoomAlias(roomIDOrAlias)
+	// Try parsing as room alias - validate it has correct format
+	_, _, err := gomatrixserverlib.SplitID('#', roomIDOrAlias)
 	if err != nil {
 		return "", &util.JSONResponse{
 			Code: http.StatusBadRequest,
@@ -132,7 +133,7 @@ func parseRoomIDOrAlias(ctx context.Context, roomIDOrAlias string, rsAPI api.Cli
 
 	// Resolve alias to room ID
 	queryReq := &api.GetRoomIDForAliasRequest{
-		Alias:              roomAlias.String(),
+		Alias:              roomIDOrAlias,
 		IncludeAppservices: true,
 	}
 	queryRes := &api.GetRoomIDForAliasResponse{}
@@ -206,17 +207,13 @@ func getUserMembership(ctx context.Context, rsAPI api.ClientRoomserverAPI, roomI
 
 // getRoomVersion queries the room version
 func getRoomVersion(ctx context.Context, rsAPI api.ClientRoomserverAPI, roomID string) string {
-	var versionRes api.QueryRoomVersionForRoomResponse
-	err := rsAPI.QueryRoomVersionForRoom(ctx, &api.QueryRoomVersionForRoomRequest{
-		RoomID: roomID,
-	}, &versionRes)
-
+	roomVersion, err := rsAPI.QueryRoomVersionForRoom(ctx, roomID)
 	if err != nil {
 		util.GetLogger(ctx).WithError(err).Error("QueryRoomVersionForRoom failed")
 		return ""
 	}
 
-	return versionRes.RoomVersion
+	return string(roomVersion)
 }
 
 // buildRoomSummaryResponse constructs the response from room state
