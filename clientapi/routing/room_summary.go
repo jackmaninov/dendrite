@@ -9,12 +9,11 @@ import (
 	"encoding/json"
 	"net/http"
 
+	"github.com/element-hq/dendrite/roomserver/api"
+	userapi "github.com/element-hq/dendrite/userapi/api"
 	"github.com/matrix-org/gomatrixserverlib"
 	"github.com/matrix-org/gomatrixserverlib/spec"
 	"github.com/matrix-org/util"
-
-	roomserverAPI "github.com/matrix-org/dendrite/roomserver/api"
-	userapi "github.com/matrix-org/dendrite/userapi/api"
 )
 
 // RoomSummaryResponse represents the response for MSC3266 room summary API
@@ -41,7 +40,7 @@ func GetRoomSummary(
 	req *http.Request,
 	device *userapi.Device,
 	roomIDOrAlias string,
-	rsAPI roomserverAPI.ClientRoomserverAPI,
+	rsAPI api.ClientRoomserverAPI,
 ) util.JSONResponse {
 	ctx := req.Context()
 
@@ -52,8 +51,8 @@ func GetRoomSummary(
 	}
 
 	// Query room state
-	stateRes := &roomserverAPI.QueryBulkStateContentResponse{}
-	if err := rsAPI.QueryBulkStateContent(ctx, &roomserverAPI.QueryBulkStateContentRequest{
+	stateRes := &api.QueryBulkStateContentResponse{}
+	if err := rsAPI.QueryBulkStateContent(ctx, &api.QueryBulkStateContentRequest{
 		RoomIDs:        []string{roomID},
 		AllowWildcards: true,
 		StateTuples: []gomatrixserverlib.StateKeyTuple{
@@ -116,7 +115,7 @@ func GetRoomSummary(
 }
 
 // parseRoomIDOrAlias resolves a room alias to room ID, or validates a room ID
-func parseRoomIDOrAlias(ctx context.Context, roomIDOrAlias string, rsAPI roomserverAPI.ClientRoomserverAPI) (string, *util.JSONResponse) {
+func parseRoomIDOrAlias(ctx context.Context, roomIDOrAlias string, rsAPI api.ClientRoomserverAPI) (string, *util.JSONResponse) {
 	// Try parsing as room ID first
 	if roomID, err := spec.NewRoomID(roomIDOrAlias); err == nil {
 		return roomID.String(), nil
@@ -132,11 +131,11 @@ func parseRoomIDOrAlias(ctx context.Context, roomIDOrAlias string, rsAPI roomser
 	}
 
 	// Resolve alias to room ID
-	queryReq := &roomserverAPI.GetRoomIDForAliasRequest{
+	queryReq := &api.GetRoomIDForAliasRequest{
 		Alias:              roomAlias.String(),
 		IncludeAppservices: true,
 	}
-	queryRes := &roomserverAPI.GetRoomIDForAliasResponse{}
+	queryRes := &api.GetRoomIDForAliasResponse{}
 	if err := rsAPI.GetRoomIDForAlias(ctx, queryReq, queryRes); err != nil {
 		util.GetLogger(ctx).WithError(err).Error("GetRoomIDForAlias failed")
 		return "", &util.JSONResponse{
@@ -159,7 +158,7 @@ func parseRoomIDOrAlias(ctx context.Context, roomIDOrAlias string, rsAPI roomser
 // Returns (canAccess, membership)
 func checkRoomAccess(
 	ctx context.Context,
-	rsAPI roomserverAPI.ClientRoomserverAPI,
+	rsAPI api.ClientRoomserverAPI,
 	roomID string,
 	userID spec.UserID,
 	roomState map[gomatrixserverlib.StateKeyTuple]string,
@@ -190,9 +189,9 @@ func checkRoomAccess(
 }
 
 // getUserMembership gets the current membership state for a user in a room
-func getUserMembership(ctx context.Context, rsAPI roomserverAPI.ClientRoomserverAPI, roomID string, userID spec.UserID) string {
-	var membershipRes roomserverAPI.QueryMembershipForUserResponse
-	err := rsAPI.QueryMembershipForUser(ctx, &roomserverAPI.QueryMembershipForUserRequest{
+func getUserMembership(ctx context.Context, rsAPI api.ClientRoomserverAPI, roomID string, userID spec.UserID) string {
+	var membershipRes api.QueryMembershipForUserResponse
+	err := rsAPI.QueryMembershipForUser(ctx, &api.QueryMembershipForUserRequest{
 		RoomID: roomID,
 		UserID: userID,
 	}, &membershipRes)
@@ -206,9 +205,9 @@ func getUserMembership(ctx context.Context, rsAPI roomserverAPI.ClientRoomserver
 }
 
 // getRoomVersion queries the room version
-func getRoomVersion(ctx context.Context, rsAPI roomserverAPI.ClientRoomserverAPI, roomID string) string {
-	var versionRes roomserverAPI.QueryRoomVersionForRoomResponse
-	err := rsAPI.QueryRoomVersionForRoom(ctx, &roomserverAPI.QueryRoomVersionForRoomRequest{
+func getRoomVersion(ctx context.Context, rsAPI api.ClientRoomserverAPI, roomID string) string {
+	var versionRes api.QueryRoomVersionForRoomResponse
+	err := rsAPI.QueryRoomVersionForRoom(ctx, &api.QueryRoomVersionForRoomRequest{
 		RoomID: roomID,
 	}, &versionRes)
 
