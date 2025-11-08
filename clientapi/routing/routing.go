@@ -300,6 +300,17 @@ func Setup(
 
 	unstableMux := publicAPIMux.PathPrefix("/unstable").Subrouter()
 
+	// MSC3266: Room Summary API
+	unstableMux.Handle("/im.nheko.summary/summary/{roomIDOrAlias}",
+		httputil.MakeAuthAPI("room_summary", userAPI, func(req *http.Request, device *userapi.Device) util.JSONResponse {
+			vars, err := httputil.URLDecodeMapValues(mux.Vars(req))
+			if err != nil {
+				return util.ErrorResponse(err)
+			}
+			return GetRoomSummary(req, device, vars["roomIDOrAlias"], rsAPI)
+		}, httputil.WithAllowGuests()),
+	).Methods(http.MethodGet, http.MethodOptions)
+
 	v3mux.Handle("/createRoom",
 		httputil.MakeAuthAPI("createRoom", userAPI, func(req *http.Request, device *userapi.Device) util.JSONResponse {
 			return CreateRoom(req, device, cfg, userAPI, rsAPI, asAPI)
