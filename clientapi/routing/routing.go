@@ -301,7 +301,18 @@ func Setup(
 	unstableMux := publicAPIMux.PathPrefix("/unstable").Subrouter()
 
 	// MSC3266: Room Summary API
+	// Correct path (aliases shouldn't be under /rooms)
 	unstableMux.Handle("/im.nheko.summary/summary/{roomIDOrAlias}",
+		httputil.MakeAuthAPI("room_summary", userAPI, func(req *http.Request, device *userapi.Device) util.JSONResponse {
+			vars, err := httputil.URLDecodeMapValues(mux.Vars(req))
+			if err != nil {
+				return util.ErrorResponse(err)
+			}
+			return GetRoomSummary(req, device, vars["roomIDOrAlias"], rsAPI)
+		}, httputil.WithAllowGuests()),
+	).Methods(http.MethodGet, http.MethodOptions)
+	// Legacy path for compatibility with Element X and other existing implementations
+	unstableMux.Handle("/im.nheko.summary/rooms/{roomIDOrAlias}/summary",
 		httputil.MakeAuthAPI("room_summary", userAPI, func(req *http.Request, device *userapi.Device) util.JSONResponse {
 			vars, err := httputil.URLDecodeMapValues(mux.Vars(req))
 			if err != nil {
