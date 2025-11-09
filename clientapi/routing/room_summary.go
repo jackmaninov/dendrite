@@ -164,6 +164,9 @@ func checkRoomAccess(
 	userID spec.UserID,
 	roomState map[gomatrixserverlib.StateKeyTuple]string,
 ) (bool, string) {
+	// Get user's membership state (we'll need this regardless)
+	membership := getUserMembership(ctx, rsAPI, roomID, userID)
+
 	// Check if room is world-readable
 	histVisKey := gomatrixserverlib.StateKeyTuple{
 		EventType: spec.MRoomHistoryVisibility,
@@ -171,13 +174,25 @@ func checkRoomAccess(
 	}
 	if visibility, ok := roomState[histVisKey]; ok && visibility == "world_readable" {
 		// World-readable rooms can be accessed by anyone
-		// Get user's membership state
-		membership := getUserMembership(ctx, rsAPI, roomID, userID)
 		return true, membership
 	}
 
-	// Not world-readable, check user membership
-	membership := getUserMembership(ctx, rsAPI, roomID, userID)
+	// Check if room is public (join_rule: "public")
+	joinRuleKey := gomatrixserverlib.StateKeyTuple{
+		EventType: spec.MRoomJoinRules,
+		StateKey:  "",
+	}
+	if joinRuleContent, ok := roomState[joinRuleKey]; ok {
+		var joinRules struct {
+			JoinRule string `json:"join_rule"`
+		}
+		if err := json.Unmarshal([]byte(joinRuleContent), &joinRules); err == nil {
+			if joinRules.JoinRule == "public" {
+				// Public rooms can be previewed by anyone
+				return true, membership
+			}
+		}
+	}
 
 	// Allow access if user is/was a member (join, invite, leave, ban)
 	// This matches Synapse behavior - you can see summary of rooms you've been in
@@ -185,7 +200,7 @@ func checkRoomAccess(
 		return true, membership
 	}
 
-	// No access - not world-readable and user never joined
+	// No access - not world-readable, not public, and user never joined
 	return false, ""
 }
 
