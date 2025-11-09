@@ -308,7 +308,15 @@ func Setup(
 			if err != nil {
 				return util.ErrorResponse(err)
 			}
-			return GetRoomSummary(req, device, vars["roomIDOrAlias"], rsAPI)
+			// Type assert to FederationInternalAPI (the actual implementation implements both)
+			fsAPI, ok := federationSender.(federationAPI.FederationInternalAPI)
+			if !ok {
+				return util.JSONResponse{
+					Code: http.StatusInternalServerError,
+					JSON: spec.InternalServerError{},
+				}
+			}
+			return GetRoomSummary(req, device, vars["roomIDOrAlias"], rsAPI, fsAPI, dendriteCfg.Global.ServerName)
 		}, httputil.WithAllowGuests()),
 	).Methods(http.MethodGet, http.MethodOptions)
 	// Legacy path for compatibility with Element X and other existing implementations
@@ -318,7 +326,15 @@ func Setup(
 			if err != nil {
 				return util.ErrorResponse(err)
 			}
-			return GetRoomSummary(req, device, vars["roomIDOrAlias"], rsAPI)
+			// Type assert to FederationInternalAPI (the actual implementation implements both)
+			fsAPI, ok := federationSender.(federationAPI.FederationInternalAPI)
+			if !ok {
+				return util.JSONResponse{
+					Code: http.StatusInternalServerError,
+					JSON: spec.InternalServerError{},
+				}
+			}
+			return GetRoomSummary(req, device, vars["roomIDOrAlias"], rsAPI, fsAPI, dendriteCfg.Global.ServerName)
 		}, httputil.WithAllowGuests()),
 	).Methods(http.MethodGet, http.MethodOptions)
 

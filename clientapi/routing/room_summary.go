@@ -9,9 +9,11 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/element-hq/dendrite/roomserver/api"
+	"github.com/element-hq/dendrite/federationapi/api"
+	rsAPI "github.com/element-hq/dendrite/roomserver/api"
 	userapi "github.com/element-hq/dendrite/userapi/api"
 	"github.com/matrix-org/gomatrixserverlib"
+	"github.com/matrix-org/gomatrixserverlib/fclient"
 	"github.com/matrix-org/gomatrixserverlib/spec"
 	"github.com/matrix-org/util"
 )
@@ -40,19 +42,24 @@ func GetRoomSummary(
 	req *http.Request,
 	device *userapi.Device,
 	roomIDOrAlias string,
-	rsAPI api.ClientRoomserverAPI,
+	roomserverAPI rsAPI.ClientRoomserverAPI,
+	fsAPI api.FederationInternalAPI,
+	serverName spec.ServerName,
 ) util.JSONResponse {
 	ctx := req.Context()
 
+	// Parse via query parameters for federation
+	vias := req.URL.Query()["via"]
+
 	// Parse and validate room ID or alias
-	roomID, err := parseRoomIDOrAlias(ctx, roomIDOrAlias, rsAPI)
-	if err != nil {
-		return *err
+	roomID, jsonErr := parseRoomIDOrAlias(ctx, roomIDOrAlias, roomserverAPI)
+	if jsonErr != nil {
+		return *jsonErr
 	}
 
-	// Query room state
-	stateRes := &api.QueryBulkStateContentResponse{}
-	if err := rsAPI.QueryBulkStateContent(ctx, &api.QueryBulkStateContentRequest{
+	// Try to fetch room state locally first
+	stateRes := &rsAPI.QueryBulkStateContentResponse{}
+	err := roomserverAPI.QueryBulkStateContent(ctx, &rsAPI.QueryBulkStateContentRequest{
 		RoomIDs:        []string{roomID},
 		AllowWildcards: true,
 		StateTuples: []gomatrixserverlib.StateKeyTuple{
@@ -67,7 +74,8 @@ func GetRoomSummary(
 			{EventType: spec.MRoomEncryption, StateKey: ""},
 			{EventType: spec.MRoomMember, StateKey: "*"}, // Wildcard for member count
 		},
-	}, stateRes); err != nil {
+	}, stateRes)
+	if err != nil {
 		util.GetLogger(ctx).WithError(err).Error("QueryBulkStateContent failed")
 		return util.JSONResponse{
 			Code: http.StatusInternalServerError,
@@ -75,16 +83,25 @@ func GetRoomSummary(
 		}
 	}
 
-	// Check if room exists
-	roomState, ok := stateRes.Rooms[roomID]
-	if !ok {
+	// Check if room exists locally
+	roomState, roomExistsLocally := stateRes.Rooms[roomID]
+
+	// If room doesn't exist locally, try federation
+	if !roomExistsLocally {
+		// Attempt to fetch via federation
+		fedResponse := fetchRoomSummaryViaFederation(ctx, fsAPI, serverName, roomID, vias)
+		if fedResponse != nil {
+			return *fedResponse
+		}
+
+		// Federation failed, return 404
 		return util.JSONResponse{
 			Code: http.StatusNotFound,
 			JSON: spec.NotFound("Room not found"),
 		}
 	}
 
-	// Check access control (world-readable or user membership)
+	// Room exists locally, proceed with local query
 	userID, err := spec.NewUserID(device.UserID, true)
 	if err != nil {
 		util.GetLogger(ctx).WithError(err).Error("UserID is invalid")
@@ -94,7 +111,8 @@ func GetRoomSummary(
 		}
 	}
 
-	canAccess, membership := checkRoomAccess(ctx, rsAPI, roomID, userID, roomState)
+	// Check access control (world-readable, public, or user membership)
+	canAccess, membership := checkRoomAccess(ctx, roomserverAPI, roomID, *userID, roomState)
 	if !canAccess {
 		// Return 404 instead of 403 to not leak room existence
 		return util.JSONResponse{
@@ -104,7 +122,7 @@ func GetRoomSummary(
 	}
 
 	// Query room version
-	roomVersion := getRoomVersion(ctx, rsAPI, roomID)
+	roomVersion := getRoomVersion(ctx, roomserverAPI, roomID)
 
 	// Build response
 	response := buildRoomSummaryResponse(roomID, roomState, membership, roomVersion)
@@ -115,8 +133,86 @@ func GetRoomSummary(
 	}
 }
 
+// fetchRoomSummaryViaFederation attempts to fetch room summary via federation
+// Returns nil if federation fails or room is not accessible
+func fetchRoomSummaryViaFederation(
+	ctx context.Context,
+	fsAPI api.FederationInternalAPI,
+	serverName spec.ServerName,
+	roomID string,
+	vias []string,
+) *util.JSONResponse {
+	// Extract server name from room ID if no via parameters provided
+	if len(vias) == 0 {
+		_, domain, err := gomatrixserverlib.SplitID('!', roomID)
+		if err == nil {
+			vias = []string{string(domain)}
+		} else {
+			return nil
+		}
+	}
+
+	// Try each via server in sequence
+	for _, via := range vias {
+		if via == string(serverName) {
+			// Skip our own server
+			continue
+		}
+
+		// Call federation hierarchy endpoint
+		res, err := fsAPI.RoomHierarchies(
+			ctx,
+			serverName,
+			spec.ServerName(via),
+			roomID,
+			false, // suggestedOnly = false to get all room info
+		)
+		if err != nil {
+			util.GetLogger(ctx).WithError(err).Warnf("Failed to fetch room hierarchy from %s", via)
+			continue
+		}
+
+		// Convert federation hierarchy response to room summary
+		summary := convertHierarchyToSummary(res.Room)
+
+		return &util.JSONResponse{
+			Code: http.StatusOK,
+			JSON: summary,
+		}
+	}
+
+	// All federation attempts failed
+	return nil
+}
+
+// convertHierarchyToSummary converts a federation hierarchy room to a room summary response
+func convertHierarchyToSummary(room fclient.RoomHierarchyRoom) RoomSummaryResponse {
+	summary := RoomSummaryResponse{
+		RoomID:           room.PublicRoom.RoomID,
+		Name:             room.PublicRoom.Name,
+		Topic:            room.PublicRoom.Topic,
+		AvatarURL:        room.PublicRoom.AvatarURL,
+		CanonicalAlias:   room.PublicRoom.CanonicalAlias,
+		NumJoinedMembers: int(room.PublicRoom.JoinedMembersCount),
+		GuestCanJoin:     room.PublicRoom.GuestCanJoin,
+		WorldReadable:    room.PublicRoom.WorldReadable,
+		JoinRule:         room.PublicRoom.JoinRule,
+		RoomType:         room.RoomType,
+	}
+
+	// Add allowed room IDs for restricted rooms
+	if len(room.AllowedRoomIDs) > 0 {
+		summary.AllowedRoomIDs = room.AllowedRoomIDs
+	}
+
+	// Note: Federation doesn't return membership, encryption, or room_version yet
+	// These will be added in Phase 3 of the implementation
+
+	return summary
+}
+
 // parseRoomIDOrAlias resolves a room alias to room ID, or validates a room ID
-func parseRoomIDOrAlias(ctx context.Context, roomIDOrAlias string, rsAPI api.ClientRoomserverAPI) (string, *util.JSONResponse) {
+func parseRoomIDOrAlias(ctx context.Context, roomIDOrAlias string, roomserverAPI rsAPI.ClientRoomserverAPI) (string, *util.JSONResponse) {
 	// Try parsing as room ID first
 	if roomID, err := spec.NewRoomID(roomIDOrAlias); err == nil {
 		return roomID.String(), nil
@@ -132,12 +228,12 @@ func parseRoomIDOrAlias(ctx context.Context, roomIDOrAlias string, rsAPI api.Cli
 	}
 
 	// Resolve alias to room ID
-	queryReq := &api.GetRoomIDForAliasRequest{
+	queryReq := &rsAPI.GetRoomIDForAliasRequest{
 		Alias:              roomIDOrAlias,
 		IncludeAppservices: true,
 	}
-	queryRes := &api.GetRoomIDForAliasResponse{}
-	if err := rsAPI.GetRoomIDForAlias(ctx, queryReq, queryRes); err != nil {
+	queryRes := &rsAPI.GetRoomIDForAliasResponse{}
+	if err := roomserverAPI.GetRoomIDForAlias(ctx, queryReq, queryRes); err != nil {
 		util.GetLogger(ctx).WithError(err).Error("GetRoomIDForAlias failed")
 		return "", &util.JSONResponse{
 			Code: http.StatusInternalServerError,
@@ -159,13 +255,13 @@ func parseRoomIDOrAlias(ctx context.Context, roomIDOrAlias string, rsAPI api.Cli
 // Returns (canAccess, membership)
 func checkRoomAccess(
 	ctx context.Context,
-	rsAPI api.ClientRoomserverAPI,
+	roomserverAPI rsAPI.ClientRoomserverAPI,
 	roomID string,
 	userID spec.UserID,
 	roomState map[gomatrixserverlib.StateKeyTuple]string,
 ) (bool, string) {
 	// Get user's membership state (we'll need this regardless)
-	membership := getUserMembership(ctx, rsAPI, roomID, userID)
+	membership := getUserMembership(ctx, roomserverAPI, roomID, userID)
 
 	// Check if room is world-readable
 	histVisKey := gomatrixserverlib.StateKeyTuple{
@@ -205,9 +301,9 @@ func checkRoomAccess(
 }
 
 // getUserMembership gets the current membership state for a user in a room
-func getUserMembership(ctx context.Context, rsAPI api.ClientRoomserverAPI, roomID string, userID spec.UserID) string {
-	var membershipRes api.QueryMembershipForUserResponse
-	err := rsAPI.QueryMembershipForUser(ctx, &api.QueryMembershipForUserRequest{
+func getUserMembership(ctx context.Context, roomserverAPI rsAPI.ClientRoomserverAPI, roomID string, userID spec.UserID) string {
+	var membershipRes rsAPI.QueryMembershipForUserResponse
+	err := roomserverAPI.QueryMembershipForUser(ctx, &rsAPI.QueryMembershipForUserRequest{
 		RoomID: roomID,
 		UserID: userID,
 	}, &membershipRes)
@@ -221,8 +317,8 @@ func getUserMembership(ctx context.Context, rsAPI api.ClientRoomserverAPI, roomI
 }
 
 // getRoomVersion queries the room version
-func getRoomVersion(ctx context.Context, rsAPI api.ClientRoomserverAPI, roomID string) string {
-	roomVersion, err := rsAPI.QueryRoomVersionForRoom(ctx, roomID)
+func getRoomVersion(ctx context.Context, roomserverAPI rsAPI.ClientRoomserverAPI, roomID string) string {
+	roomVersion, err := roomserverAPI.QueryRoomVersionForRoom(ctx, roomID)
 	if err != nil {
 		util.GetLogger(ctx).WithError(err).Error("QueryRoomVersionForRoom failed")
 		return ""
