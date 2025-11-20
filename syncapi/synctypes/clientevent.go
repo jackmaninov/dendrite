@@ -523,3 +523,21 @@ func DetermineMembershipAtEvent(
 	// Case 3: Default to "leave"
 	return "leave"
 }
+
+// AnnotateEventsWithMembership adds membership metadata to a list of ClientEvents.
+// This is a convenience function for annotating multiple events with the same membership.
+//
+// Parameters:
+//   - events: Slice of ClientEvent pointers to annotate
+//   - membership: The membership state to add to all events
+//   - useStableIdentifier: Whether to use stable ("membership") or unstable field name
+//
+// Returns an error if any event fails to be annotated.
+func AnnotateEventsWithMembership(events []ClientEvent, membership string, useStableIdentifier bool) error {
+	for i := range events {
+		if err := AnnotateEventWithMembership(&events[i], membership, useStableIdentifier); err != nil {
+			return fmt.Errorf("failed to annotate event %d: %w", i, err)
+		}
+	}
+	return nil
+}
