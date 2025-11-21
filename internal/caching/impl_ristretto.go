@@ -37,6 +37,7 @@ const (
 	eventTypeCache
 	eventTypeNIDCache
 	eventStateKeyNIDCache
+	roomSummaryCache
 )
 
 const (
@@ -150,6 +151,12 @@ func NewRistrettoCache(maxCost config.DataUnit, maxAge time.Duration, enableProm
 			Prefix:  lazyLoadingCache,
 			Mutable: true,
 			MaxAge:  maxAge,
+		},
+		RoomSummaries: &RistrettoCachePartition[string, RoomSummaryResponse]{ // "roomID:auth" -> summary
+			cache:   cache,
+			Prefix:  roomSummaryCache,
+			Mutable: true,
+			MaxAge:  lesserOf(5*time.Minute, maxAge), // 5 minute TTL for room summaries
 		},
 	}
 }

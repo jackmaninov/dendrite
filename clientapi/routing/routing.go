@@ -29,6 +29,7 @@ import (
 	clientutil "github.com/element-hq/dendrite/clientapi/httputil"
 	"github.com/element-hq/dendrite/clientapi/producers"
 	federationAPI "github.com/element-hq/dendrite/federationapi/api"
+	"github.com/element-hq/dendrite/internal/caching"
 	"github.com/element-hq/dendrite/internal/httputil"
 	"github.com/element-hq/dendrite/internal/transactions"
 	roomserverAPI "github.com/element-hq/dendrite/roomserver/api"
@@ -67,6 +68,7 @@ func Setup(
 	transactionsCache *transactions.Cache,
 	federationSender federationAPI.ClientFederationAPI,
 	extRoomsProvider api.ExtraPublicRoomsProvider,
+	caches *caching.Caches,
 	natsClient *nats.Conn, enableMetrics bool,
 ) {
 	cfg := &dendriteCfg.ClientAPI
@@ -318,7 +320,7 @@ func Setup(
 					JSON: spec.InternalServerError{},
 				}
 			}
-			return GetRoomSummary(req, device, vars["roomIDOrAlias"], rsAPI, fsAPI, dendriteCfg.Global.ServerName)
+			return GetRoomSummary(req, device, vars["roomIDOrAlias"], rsAPI, fsAPI, dendriteCfg.Global.ServerName, caches)
 		}, httputil.WithAllowGuests()),
 	).Methods(http.MethodGet, http.MethodOptions)
 	// Legacy path for compatibility with Element X and other existing implementations
@@ -336,7 +338,7 @@ func Setup(
 					JSON: spec.InternalServerError{},
 				}
 			}
-			return GetRoomSummary(req, device, vars["roomIDOrAlias"], rsAPI, fsAPI, dendriteCfg.Global.ServerName)
+			return GetRoomSummary(req, device, vars["roomIDOrAlias"], rsAPI, fsAPI, dendriteCfg.Global.ServerName, caches)
 		}, httputil.WithAllowGuests()),
 	).Methods(http.MethodGet, http.MethodOptions)
 

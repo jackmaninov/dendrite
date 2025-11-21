@@ -10,6 +10,7 @@ import (
 	"net/http"
 
 	"github.com/element-hq/dendrite/federationapi/api"
+	"github.com/element-hq/dendrite/internal/caching"
 	rsAPI "github.com/element-hq/dendrite/roomserver/api"
 	userapi "github.com/element-hq/dendrite/userapi/api"
 	"github.com/matrix-org/gomatrixserverlib"
@@ -47,8 +48,10 @@ func GetRoomSummary(
 	roomserverAPI rsAPI.ClientRoomserverAPI,
 	fsAPI api.FederationInternalAPI,
 	serverName spec.ServerName,
+	cache caching.RoomSummaryCache,
 ) util.JSONResponse {
 	ctx := req.Context()
+	authenticated := device != nil
 
 	// Parse via query parameters for federation
 	vias := req.URL.Query()["via"]
@@ -143,11 +146,37 @@ func GetRoomSummary(
 		membership = ""
 	}
 
-	// Query room version
+	// Check cache for room summary (without user-specific membership)
+	if cache != nil {
+		if cachedResponse, ok := cache.GetRoomSummary(roomID, authenticated); ok {
+			// Cache hit - convert to routing response type
+			response := fromCacheResponse(cachedResponse)
+			// Add user's membership if authenticated
+			if authenticated && membership != "" {
+				response.Membership = membership
+			}
+			return util.JSONResponse{
+				Code: http.StatusOK,
+				JSON: response,
+			}
+		}
+	}
+
+	// Cache miss - query room version and build response
 	roomVersion := getRoomVersion(ctx, roomserverAPI, roomID)
 
-	// Build response
-	response := buildRoomSummaryResponse(roomID, roomState, membership, roomVersion)
+	// Build response (without membership for caching)
+	response := buildRoomSummaryResponse(roomID, roomState, "", roomVersion)
+
+	// Store in cache (without user-specific membership)
+	if cache != nil {
+		cache.StoreRoomSummary(roomID, authenticated, toCacheResponse(response))
+	}
+
+	// Add user's membership to response if authenticated
+	if authenticated && membership != "" {
+		response.Membership = membership
+	}
 
 	return util.JSONResponse{
 		Code: http.StatusOK,
@@ -474,4 +503,44 @@ func buildRoomSummaryResponse(
 	}
 
 	return response
+}
+
+// toCacheResponse converts routing.RoomSummaryResponse to caching.RoomSummaryResponse
+func toCacheResponse(r RoomSummaryResponse) caching.RoomSummaryResponse {
+	return caching.RoomSummaryResponse{
+		RoomID:           r.RoomID,
+		RoomType:         r.RoomType,
+		Name:             r.Name,
+		Topic:            r.Topic,
+		AvatarURL:        r.AvatarURL,
+		CanonicalAlias:   r.CanonicalAlias,
+		NumJoinedMembers: r.NumJoinedMembers,
+		GuestCanJoin:     r.GuestCanJoin,
+		WorldReadable:    r.WorldReadable,
+		JoinRule:         r.JoinRule,
+		AllowedRoomIDs:   r.AllowedRoomIDs,
+		Encryption:       r.Encryption,
+		Membership:       r.Membership,
+		RoomVersion:      r.RoomVersion,
+	}
+}
+
+// fromCacheResponse converts caching.RoomSummaryResponse to routing.RoomSummaryResponse
+func fromCacheResponse(r caching.RoomSummaryResponse) RoomSummaryResponse {
+	return RoomSummaryResponse{
+		RoomID:           r.RoomID,
+		RoomType:         r.RoomType,
+		Name:             r.Name,
+		Topic:            r.Topic,
+		AvatarURL:        r.AvatarURL,
+		CanonicalAlias:   r.CanonicalAlias,
+		NumJoinedMembers: r.NumJoinedMembers,
+		GuestCanJoin:     r.GuestCanJoin,
+		WorldReadable:    r.WorldReadable,
+		JoinRule:         r.JoinRule,
+		AllowedRoomIDs:   r.AllowedRoomIDs,
+		Encryption:       r.Encryption,
+		Membership:       r.Membership,
+		RoomVersion:      r.RoomVersion,
+	}
 }
