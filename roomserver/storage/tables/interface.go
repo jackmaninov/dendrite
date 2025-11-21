@@ -247,7 +247,9 @@ func ExtractContentValue(ev *types.HeaderedEvent) string {
 	key := ""
 	switch ev.Type() {
 	case spec.MRoomCreate:
-		key = "creator"
+		// Return the entire content so consumers can extract room_type, creator, etc.
+		// This is needed for MSC3266 room summary to determine if a room is a space.
+		return string(content)
 	case spec.MRoomCanonicalAlias:
 		key = "alias"
 	case spec.MRoomHistoryVisibility:
