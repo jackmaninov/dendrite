@@ -301,9 +301,11 @@ func Setup(
 	unstableMux := publicAPIMux.PathPrefix("/unstable").Subrouter()
 
 	// MSC3266: Room Summary API
+	// Supports both authenticated and unauthenticated requests (Phase 4)
+	// Unauthenticated requests can only access public/world-readable rooms
 	// Correct path (aliases shouldn't be under /rooms)
 	unstableMux.Handle("/im.nheko.summary/summary/{roomIDOrAlias}",
-		httputil.MakeAuthAPI("room_summary", userAPI, func(req *http.Request, device *userapi.Device) util.JSONResponse {
+		httputil.MakeOptionalAuthAPI("room_summary", userAPI, func(req *http.Request, device *userapi.Device) util.JSONResponse {
 			vars, err := httputil.URLDecodeMapValues(mux.Vars(req))
 			if err != nil {
 				return util.ErrorResponse(err)
@@ -321,7 +323,7 @@ func Setup(
 	).Methods(http.MethodGet, http.MethodOptions)
 	// Legacy path for compatibility with Element X and other existing implementations
 	unstableMux.Handle("/im.nheko.summary/rooms/{roomIDOrAlias}/summary",
-		httputil.MakeAuthAPI("room_summary", userAPI, func(req *http.Request, device *userapi.Device) util.JSONResponse {
+		httputil.MakeOptionalAuthAPI("room_summary", userAPI, func(req *http.Request, device *userapi.Device) util.JSONResponse {
 			vars, err := httputil.URLDecodeMapValues(mux.Vars(req))
 			if err != nil {
 				return util.ErrorResponse(err)

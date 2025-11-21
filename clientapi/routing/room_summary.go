@@ -38,9 +38,11 @@ type RoomSummaryResponse struct {
 
 // GetRoomSummary implements MSC3266 room summary API
 // GET /_matrix/client/unstable/im.nheko.summary/summary/{roomIdOrAlias}
+// Supports both authenticated and unauthenticated requests.
+// Unauthenticated requests can only access public/world-readable rooms.
 func GetRoomSummary(
 	req *http.Request,
-	device *userapi.Device,
+	device *userapi.Device, // May be nil for unauthenticated requests
 	roomIDOrAlias string,
 	roomserverAPI rsAPI.ClientRoomserverAPI,
 	fsAPI api.FederationInternalAPI,
@@ -101,24 +103,44 @@ func GetRoomSummary(
 		}
 	}
 
-	// Room exists locally, proceed with local query
-	userID, err := spec.NewUserID(device.UserID, true)
-	if err != nil {
-		util.GetLogger(ctx).WithError(err).Error("UserID is invalid")
-		return util.JSONResponse{
-			Code: http.StatusBadRequest,
-			JSON: spec.Unknown("Device UserID is invalid"),
-		}
-	}
+	// Room exists locally - check access control
+	var userID *spec.UserID
+	var membership string
 
-	// Check access control (world-readable, public, or user membership)
-	canAccess, membership := checkRoomAccess(ctx, roomserverAPI, roomID, *userID, roomState)
-	if !canAccess {
-		// Return 404 instead of 403 to not leak room existence
-		return util.JSONResponse{
-			Code: http.StatusNotFound,
-			JSON: spec.NotFound("Room not found"),
+	if device != nil {
+		// Authenticated request - get user ID and check full access
+		parsedUserID, err := spec.NewUserID(device.UserID, true)
+		if err != nil {
+			util.GetLogger(ctx).WithError(err).Error("UserID is invalid")
+			return util.JSONResponse{
+				Code: http.StatusBadRequest,
+				JSON: spec.Unknown("Device UserID is invalid"),
+			}
 		}
+		userID = parsedUserID
+
+		// Check access control (world-readable, public, or user membership)
+		canAccess, userMembership := checkRoomAccess(ctx, roomserverAPI, roomID, *userID, roomState)
+		if !canAccess {
+			// Return 404 instead of 403 to not leak room existence
+			return util.JSONResponse{
+				Code: http.StatusNotFound,
+				JSON: spec.NotFound("Room not found"),
+			}
+		}
+		membership = userMembership
+	} else {
+		// Unauthenticated request - only allow public/world-readable rooms
+		canAccess := checkUnauthenticatedAccess(roomState)
+		if !canAccess {
+			// Return 404 instead of 403 to not leak room existence
+			return util.JSONResponse{
+				Code: http.StatusNotFound,
+				JSON: spec.NotFound("Room not found"),
+			}
+		}
+		// Don't include membership for unauthenticated requests
+		membership = ""
 	}
 
 	// Query room version
@@ -298,6 +320,42 @@ func checkRoomAccess(
 
 	// No access - not world-readable, not public, and user never joined
 	return false, ""
+}
+
+// checkUnauthenticatedAccess determines if an unauthenticated user can access the room summary
+// Only allows access to public or world-readable rooms
+func checkUnauthenticatedAccess(
+	roomState map[gomatrixserverlib.StateKeyTuple]string,
+) bool {
+	// Check if room is world-readable
+	histVisKey := gomatrixserverlib.StateKeyTuple{
+		EventType: spec.MRoomHistoryVisibility,
+		StateKey:  "",
+	}
+	if visibility, ok := roomState[histVisKey]; ok && visibility == "world_readable" {
+		// World-readable rooms can be accessed by anyone
+		return true
+	}
+
+	// Check if room is public (join_rule: "public")
+	joinRuleKey := gomatrixserverlib.StateKeyTuple{
+		EventType: spec.MRoomJoinRules,
+		StateKey:  "",
+	}
+	if joinRuleContent, ok := roomState[joinRuleKey]; ok {
+		var joinRules struct {
+			JoinRule string `json:"join_rule"`
+		}
+		if err := json.Unmarshal([]byte(joinRuleContent), &joinRules); err == nil {
+			if joinRules.JoinRule == "public" {
+				// Public rooms can be previewed by anyone
+				return true
+			}
+		}
+	}
+
+	// Unauthenticated users cannot access private rooms
+	return false
 }
 
 // getUserMembership gets the current membership state for a user in a room
