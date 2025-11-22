@@ -38,6 +38,42 @@ func (a *FederationInternalAPI) SendJoin(
 	return &ires, nil
 }
 
+// SendJoinPartialState sends a join event using MSC3706 partial state join (omit_members=true)
+func (a *FederationInternalAPI) SendJoinPartialState(
+	ctx context.Context, origin, s spec.ServerName, event gomatrixserverlib.PDU,
+) (res gomatrixserverlib.SendJoinResponse, err error) {
+	ctx, cancel := context.WithTimeout(ctx, time.Minute*5)
+	defer cancel()
+	ires, err := a.federation.SendJoinPartialState(ctx, origin, s, event)
+	if err != nil {
+		return &fclient.RespSendJoin{}, err
+	}
+	return &ires, nil
+}
+
+// PartialStateJoinClient wraps the FederationInternalAPI to use SendJoinPartialState
+// instead of SendJoin when calling gomatrixserverlib.PerformJoin.
+// It also tracks whether the join response had members omitted for partial state joins.
+type PartialStateJoinClient struct {
+	*FederationInternalAPI
+	// LastJoinMembersOmitted tracks if the last join response omitted members
+	LastJoinMembersOmitted bool
+	// LastJoinServersInRoom tracks the servers returned in the last partial state join
+	LastJoinServersInRoom []string
+}
+
+// SendJoin calls SendJoinPartialState for MSC3706 faster joins
+func (p *PartialStateJoinClient) SendJoin(
+	ctx context.Context, origin, s spec.ServerName, event gomatrixserverlib.PDU,
+) (res gomatrixserverlib.SendJoinResponse, err error) {
+	res, err = p.FederationInternalAPI.SendJoinPartialState(ctx, origin, s, event)
+	if err == nil && res != nil {
+		p.LastJoinMembersOmitted = res.GetMembersOmitted()
+		p.LastJoinServersInRoom = res.GetServersInRoom()
+	}
+	return res, err
+}
+
 func (a *FederationInternalAPI) GetEventAuth(
 	ctx context.Context, origin, s spec.ServerName,
 	roomVersion gomatrixserverlib.RoomVersion, roomID, eventID string,

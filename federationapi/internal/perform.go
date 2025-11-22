@@ -191,7 +191,9 @@ func (r *FederationInternalAPI) performJoinUsingServer(
 			return r.rsAPI.StoreUserRoomPublicKey(ctx, senderID, *storeUserID, roomID)
 		},
 	}
-	response, joinErr := gomatrixserverlib.PerformJoin(ctx, r, joinInput)
+	// Use partial state join client for MSC3706 faster joins
+	partialStateClient := &PartialStateJoinClient{FederationInternalAPI: r}
+	response, joinErr := gomatrixserverlib.PerformJoin(ctx, partialStateClient, joinInput)
 
 	if joinErr != nil {
 		if !joinErr.Reachable {
@@ -204,6 +206,16 @@ func (r *FederationInternalAPI) performJoinUsingServer(
 	r.statistics.ForServer(serverName).Success(statistics.SendDirect)
 	if response == nil {
 		return fmt.Errorf("Received nil response from gomatrixserverlib.PerformJoin")
+	}
+
+	// Check if this was a partial state join (MSC3706)
+	isPartialState := partialStateClient.LastJoinMembersOmitted
+	serversInRoom := partialStateClient.LastJoinServersInRoom
+	if isPartialState {
+		logrus.WithFields(logrus.Fields{
+			"room_id":         roomID,
+			"servers_in_room": len(serversInRoom),
+		}).Info("Joined room with partial state (MSC3706)")
 	}
 
 	// We need to immediately update our list of joined hosts for this room now as we are technically
@@ -236,6 +248,26 @@ func (r *FederationInternalAPI) performJoinUsingServer(
 	); err != nil {
 		return fmt.Errorf("roomserverAPI.SendEventWithState: %w", err)
 	}
+
+	// If this was a partial state join, store the partial state info (MSC3706)
+	if isPartialState {
+		roomNID, err := r.rsAPI.AssignRoomNID(ctx, *room, gomatrixserverlib.RoomVersion(response.JoinEvent.Version()))
+		if err != nil {
+			logrus.WithError(err).WithField("room_id", roomID).Error("Failed to get room NID for partial state tracking")
+		} else {
+			// We don't have the join event NID here, so pass 0 for now
+			// The resync worker will handle this properly
+			if err := r.rsAPI.SetRoomPartialState(ctx, roomNID, 0, string(serverName), serversInRoom); err != nil {
+				logrus.WithError(err).WithField("room_id", roomID).Error("Failed to store partial state info")
+			} else {
+				logrus.WithFields(logrus.Fields{
+					"room_id":  roomID,
+					"room_nid": roomNID,
+				}).Info("Stored partial state info, will resync state in background")
+			}
+		}
+	}
+
 	return nil
 }
 

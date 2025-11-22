@@ -348,3 +348,30 @@ func (r *RoomserverInternalAPI) InsertReportedEvent(
 ) (int64, error) {
 	return r.DB.InsertReportedEvent(ctx, roomID, eventID, reportingUserID, reason, score)
 }
+
+// MSC3706 Partial State Join methods
+
+// SetRoomPartialState marks a room as having partial state after a faster join
+func (r *RoomserverInternalAPI) SetRoomPartialState(ctx context.Context, roomNID types.RoomNID, joinEventNID types.EventNID, joinedVia string, serversInRoom []string) error {
+	return r.DB.SetRoomPartialState(ctx, roomNID, joinEventNID, joinedVia, serversInRoom)
+}
+
+// IsRoomPartialState returns true if the room has partial state
+func (r *RoomserverInternalAPI) IsRoomPartialState(ctx context.Context, roomNID types.RoomNID) (bool, error) {
+	return r.DB.IsRoomPartialState(ctx, roomNID)
+}
+
+// ClearRoomPartialState removes the partial state flag from a room
+func (r *RoomserverInternalAPI) ClearRoomPartialState(ctx context.Context, roomNID types.RoomNID) error {
+	return r.DB.ClearRoomPartialState(ctx, roomNID)
+}
+
+// GetPartialStateServers returns servers known to be in a partial state room
+func (r *RoomserverInternalAPI) GetPartialStateServers(ctx context.Context, roomNID types.RoomNID) ([]string, error) {
+	return r.DB.GetPartialStateServers(ctx, roomNID)
+}
+
+// GetAllPartialStateRooms returns all rooms with partial state
+func (r *RoomserverInternalAPI) GetAllPartialStateRooms(ctx context.Context) ([]types.RoomNID, error) {
+	return r.DB.GetAllPartialStateRooms(ctx)
+}

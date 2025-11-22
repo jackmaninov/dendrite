@@ -329,6 +329,18 @@ type FederationRoomserverAPI interface {
 
 	IsKnownRoom(ctx context.Context, roomID spec.RoomID) (bool, error)
 	StateQuerier() gomatrixserverlib.StateQuerier
+
+	// MSC3706 Partial State Join methods
+	// SetRoomPartialState marks a room as having partial state after a faster join
+	SetRoomPartialState(ctx context.Context, roomNID types.RoomNID, joinEventNID types.EventNID, joinedVia string, serversInRoom []string) error
+	// IsRoomPartialState returns true if the room has partial state
+	IsRoomPartialState(ctx context.Context, roomNID types.RoomNID) (bool, error)
+	// ClearRoomPartialState removes the partial state flag from a room
+	ClearRoomPartialState(ctx context.Context, roomNID types.RoomNID) error
+	// GetPartialStateServers returns servers known to be in a partial state room
+	GetPartialStateServers(ctx context.Context, roomNID types.RoomNID) ([]string, error)
+	// GetAllPartialStateRooms returns all rooms with partial state
+	GetAllPartialStateRooms(ctx context.Context) ([]types.RoomNID, error)
 }
 
 type KeyserverRoomserverAPI interface {
