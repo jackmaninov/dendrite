@@ -248,6 +248,8 @@ type RoomDatabase interface {
 	GetOrCreateEventTypeNID(ctx context.Context, eventType string) (eventTypeNID types.EventTypeNID, err error)
 	GetOrCreateEventStateKeyNID(ctx context.Context, eventStateKey *string) (types.EventStateKeyNID, error)
 	GetStateEvent(ctx context.Context, roomID, evType, stateKey string) (*types.HeaderedEvent, error)
+	// IsRoomPartialState returns true if the room has partial state from a faster join (MSC3706)
+	IsRoomPartialState(ctx context.Context, roomNID types.RoomNID) (bool, error)
 }
 
 type EventDatabase interface {

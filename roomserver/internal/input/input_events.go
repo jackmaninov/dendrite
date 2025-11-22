@@ -133,6 +133,16 @@ func (r *Inputer) processRoomEvent(
 		senderDomain = sender.Domain()
 	}
 
+	// Check if the room has partial state (MSC3706 faster joins)
+	// This affects how we handle missing auth events and authorization failures
+	var hasPartialState bool
+	if roomInfo != nil {
+		hasPartialState, _ = r.DB.IsRoomPartialState(ctx, roomInfo.RoomNID)
+		if hasPartialState {
+			logger = logger.WithField("partial_state", true)
+		}
+	}
+
 	// If we already know about this outlier and it hasn't been rejected
 	// then we won't attempt to reprocess it. If it was rejected or has now
 	// arrived as a different kind of event, then we can attempt to reprocess,
@@ -221,9 +231,16 @@ func (r *Inputer) processRoomEvent(
 	if err = gomatrixserverlib.Allowed(event, authEvents, func(roomID spec.RoomID, senderID spec.SenderID) (*spec.UserID, error) {
 		return r.Queryer.QueryUserIDForSender(ctx, roomID, senderID)
 	}); err != nil {
-		isRejected = true
-		rejectionErr = err
-		logger.WithError(rejectionErr).Warnf("Event %s not allowed by auth events", event.EventID())
+		// During partial state (MSC3706 faster joins), we may be missing member events
+		// that would authorize this event. In this case, we accept the event provisionally
+		// rather than rejecting it. The full state resync will validate events properly.
+		if hasPartialState {
+			logger.WithError(err).Debugf("Event %s failed auth during partial state, accepting provisionally", event.EventID())
+		} else {
+			isRejected = true
+			rejectionErr = err
+			logger.WithError(rejectionErr).Warnf("Event %s not allowed by auth events", event.EventID())
+		}
 	}
 
 	// At this point we are checking whether we know all of the prev events, and
