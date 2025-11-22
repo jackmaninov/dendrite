@@ -52,7 +52,7 @@ func (r *Leaver) PerformLeave(
 		"room_id": req.RoomID,
 		"user_id": req.Leaver.String(),
 	})
-	logger.Info("User requested to leave join")
+	logger.Info("User requested to leave room")
 	if strings.HasPrefix(req.RoomID, "!") {
 		output, err := r.performLeaveRoomByID(context.Background(), req, res)
 		if err != nil {
