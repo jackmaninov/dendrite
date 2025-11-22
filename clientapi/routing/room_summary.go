@@ -325,19 +325,15 @@ func checkRoomAccess(
 	}
 
 	// Check if room is public (join_rule: "public")
+	// QueryBulkStateContent returns the extracted join_rule value directly (e.g., "public")
 	joinRuleKey := gomatrixserverlib.StateKeyTuple{
 		EventType: spec.MRoomJoinRules,
 		StateKey:  "",
 	}
 	if joinRuleContent, ok := roomState[joinRuleKey]; ok {
-		var joinRules struct {
-			JoinRule string `json:"join_rule"`
-		}
-		if err := json.Unmarshal([]byte(joinRuleContent), &joinRules); err == nil {
-			if joinRules.JoinRule == "public" {
-				// Public rooms can be previewed by anyone
-				return true, membership
-			}
+		if joinRuleContent == "public" {
+			// Public rooms can be previewed by anyone
+			return true, membership
 		}
 	}
 
@@ -367,19 +363,15 @@ func checkUnauthenticatedAccess(
 	}
 
 	// Check if room is public (join_rule: "public")
+	// QueryBulkStateContent returns the extracted join_rule value directly (e.g., "public")
 	joinRuleKey := gomatrixserverlib.StateKeyTuple{
 		EventType: spec.MRoomJoinRules,
 		StateKey:  "",
 	}
 	if joinRuleContent, ok := roomState[joinRuleKey]; ok {
-		var joinRules struct {
-			JoinRule string `json:"join_rule"`
-		}
-		if err := json.Unmarshal([]byte(joinRuleContent), &joinRules); err == nil {
-			if joinRules.JoinRule == "public" {
-				// Public rooms can be previewed by anyone
-				return true
-			}
+		if joinRuleContent == "public" {
+			// Public rooms can be previewed by anyone
+			return true
 		}
 	}
 

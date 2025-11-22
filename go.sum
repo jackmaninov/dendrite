@@ -237,12 +237,6 @@ github.com/matrix-org/go-sqlite3-js v0.0.0-20220419092513-28aa791a1c91 h1:s7fexw
 github.com/matrix-org/go-sqlite3-js v0.0.0-20220419092513-28aa791a1c91/go.mod h1:e+cg2q7C7yE5QnAXgzo512tgFh1RbQLC0+jozuegKgo=
 github.com/matrix-org/gomatrix v0.0.0-20220926102614-ceba4d9f7530 h1:kHKxCOLcHH8r4Fzarl4+Y3K5hjothkVW5z7T1dUM11U=
 github.com/matrix-org/gomatrix v0.0.0-20220926102614-ceba4d9f7530/go.mod h1:/gBX06Kw0exX1HrwmoBibFA98yBk/jxKpGVeyQbff+s=
-github.com/matrix-org/gomatrixserverlib v0.0.0-20250813150445-9f5070a65744 h1:5GvC2FD9O/PhuyY95iJQdNYHbDioEhMWdeMP9maDUL8=
-github.com/matrix-org/gomatrixserverlib v0.0.0-20250813150445-9f5070a65744/go.mod h1:b6KVfDjXjA5Q7vhpOaMqIhFYvu5BuFVZixlNeTV/CLc=
-github.com/matrix-org/gomatrixserverlib v0.0.0-20250814102638-60b9d3e5b634 h1:5MDrrj6hsTEW7Hv7rnWtSUQ4T4SUncFWQQG7vlrXnWw=
-github.com/matrix-org/gomatrixserverlib v0.0.0-20250814102638-60b9d3e5b634/go.mod h1:b6KVfDjXjA5Q7vhpOaMqIhFYvu5BuFVZixlNeTV/CLc=
-github.com/matrix-org/gomatrixserverlib v0.0.0-20250815065806-6697d93cbcba h1:vUUjTOXZ/bYdF/SmJPH8HZ/UTmvw+ldngFKVLElmn+I=
-github.com/matrix-org/gomatrixserverlib v0.0.0-20250815065806-6697d93cbcba/go.mod h1:b6KVfDjXjA5Q7vhpOaMqIhFYvu5BuFVZixlNeTV/CLc=
 github.com/matrix-org/pinecone v0.11.1-0.20230810010612-ea4c33717fd7 h1:6t8kJr8i1/1I5nNttw6nn1ryQJgzVlBmSGgPiiaTdw4=
 github.com/matrix-org/pinecone v0.11.1-0.20230810010612-ea4c33717fd7/go.mod h1:ReWMS/LoVnOiRAdq9sNUC2NZnd1mZkMNB52QhpTRWjg=
 github.com/matrix-org/util v0.0.0-20221111132719-399730281e66 h1:6z4KxomXSIGWqhHcfzExgkH3Z3UkIXry4ibJS4Aqz2Y=
@@ -377,6 +371,8 @@ github.com/yggdrasil-network/yggquic v0.0.0-20241212194307-0d495106021f h1:nqinj
 github.com/yggdrasil-network/yggquic v0.0.0-20241212194307-0d495106021f/go.mod h1:TVCKOUWiXR9cAqr3eDpKvXkVkTph38xwk0wjcvfrtKI=
 github.com/yuin/goldmark v1.1.27/go.mod h1:3hX8gzYuyVAZsxl0MRgGTJEmQBFcNTphYh9decYSb74=
 github.com/yuin/goldmark v1.2.1/go.mod h1:3hX8gzYuyVAZsxl0MRgGTJEmQBFcNTphYh9decYSb74=
+gitlab.hjallr.com/jackmaninov/gomatrixserverlib.git v0.0.0-20251121215753-73393443b42e h1:mDZfnN7CRyaRagvZhBLU6L5jglQH7I8zijziWtzjAi4=
+gitlab.hjallr.com/jackmaninov/gomatrixserverlib.git v0.0.0-20251121215753-73393443b42e/go.mod h1:b6KVfDjXjA5Q7vhpOaMqIhFYvu5BuFVZixlNeTV/CLc=
 go.etcd.io/bbolt v1.4.0 h1:TU77id3TnN/zKr7CO/uk+fBCwF2jGcMuw2B/FMAzYIk=
 go.etcd.io/bbolt v1.4.0/go.mod h1:AsD+OCi/qPN1giOX1aiLAha3o1U8rAz65bvN4j0sRuk=
 go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.53.0 h1:4K4tsIXefpVJtvA/8srF4V4y0akAoPHkIslgAkjixJA=
