@@ -167,5 +167,13 @@ func NewInternalAPI(
 	}
 	time.AfterFunc(time.Minute, cleanExpiredEDUs)
 
-	return internal.NewFederationInternalAPI(federationDB, cfg, rsAPI, federation, &stats, caches, queues, keyRing)
+	fedAPI := internal.NewFederationInternalAPI(federationDB, cfg, rsAPI, federation, &stats, caches, queues, keyRing)
+
+	// Start the partial state worker for MSC3706 faster joins
+	partialStateWorker := internal.NewPartialStateWorker(processContext, rsAPI, fedAPI)
+	if err := partialStateWorker.Start(); err != nil {
+		logrus.WithError(err).Warn("failed to start partial state worker")
+	}
+
+	return fedAPI
 }

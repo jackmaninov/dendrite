@@ -341,6 +341,12 @@ type FederationRoomserverAPI interface {
 	GetPartialStateServers(ctx context.Context, roomNID types.RoomNID) ([]string, error)
 	// GetAllPartialStateRooms returns all rooms with partial state
 	GetAllPartialStateRooms(ctx context.Context) ([]types.RoomNID, error)
+	// RoomInfoByNID returns room information for the given room NID
+	RoomInfoByNID(ctx context.Context, roomNID types.RoomNID) (*types.RoomInfo, error)
+	// LatestEventIDs returns the latest event IDs and state snapshot for a room
+	LatestEventIDs(ctx context.Context, roomNID types.RoomNID) ([]string, types.StateSnapshotNID, int64, error)
+	// RoomIDFromNID returns the room ID for a given room NID
+	RoomIDFromNID(ctx context.Context, roomNID types.RoomNID) (string, error)
 }
 
 type KeyserverRoomserverAPI interface {

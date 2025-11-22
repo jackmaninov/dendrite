@@ -375,3 +375,18 @@ func (r *RoomserverInternalAPI) GetPartialStateServers(ctx context.Context, room
 func (r *RoomserverInternalAPI) GetAllPartialStateRooms(ctx context.Context) ([]types.RoomNID, error) {
 	return r.DB.GetAllPartialStateRooms(ctx)
 }
+
+// RoomInfoByNID returns room information for the given room NID
+func (r *RoomserverInternalAPI) RoomInfoByNID(ctx context.Context, roomNID types.RoomNID) (*types.RoomInfo, error) {
+	return r.DB.RoomInfoByNID(ctx, roomNID)
+}
+
+// LatestEventIDs returns the latest event IDs and state snapshot for a room
+func (r *RoomserverInternalAPI) LatestEventIDs(ctx context.Context, roomNID types.RoomNID) ([]string, types.StateSnapshotNID, int64, error) {
+	return r.DB.LatestEventIDs(ctx, roomNID)
+}
+
+// RoomIDFromNID returns the room ID for a given room NID
+func (r *RoomserverInternalAPI) RoomIDFromNID(ctx context.Context, roomNID types.RoomNID) (string, error) {
+	return r.DB.RoomIDFromNID(ctx, roomNID)
+}

@@ -2199,6 +2199,18 @@ func (d *Database) GetAllPartialStateRooms(ctx context.Context) ([]types.RoomNID
 	return d.PartialStateTable.SelectAllPartialStateRooms(ctx, nil)
 }
 
+// RoomIDFromNID returns the room ID for a given room NID
+func (d *Database) RoomIDFromNID(ctx context.Context, roomNID types.RoomNID) (string, error) {
+	roomIDs, err := d.RoomsTable.BulkSelectRoomIDs(ctx, nil, []types.RoomNID{roomNID})
+	if err != nil {
+		return "", err
+	}
+	if len(roomIDs) == 0 {
+		return "", fmt.Errorf("room NID %d not found", roomNID)
+	}
+	return roomIDs[0], nil
+}
+
 // findRoomNameAndCanonicalAlias loops over events to find the corresponding room name and canonicalAlias
 // for a given roomID.
 func findRoomNameAndCanonicalAlias(events []tables.StrippedEvent, roomID string) (name, canonicalAlias string) {

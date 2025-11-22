@@ -204,6 +204,8 @@ type Database interface {
 	ClearRoomPartialState(ctx context.Context, roomNID types.RoomNID) error
 	// GetAllPartialStateRooms returns all rooms that currently have partial state
 	GetAllPartialStateRooms(ctx context.Context) ([]types.RoomNID, error)
+	// RoomIDFromNID returns the room ID for a given room NID
+	RoomIDFromNID(ctx context.Context, roomNID types.RoomNID) (string, error)
 }
 
 type UserRoomKeys interface {
