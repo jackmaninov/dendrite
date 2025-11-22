@@ -47,6 +47,7 @@ type Database struct {
 	PublishedTable     tables.Published
 	Purge              tables.Purge
 	UserRoomKeyTable   tables.UserRoomKeys
+	PartialStateTable  tables.PartialState
 	GetRoomUpdaterFn   func(ctx context.Context, roomInfo *types.RoomInfo) (*RoomUpdater, error)
 }
 
@@ -2167,6 +2168,35 @@ func (d *Database) AdminDeleteEventReport(ctx context.Context, reportID uint64) 
 	return d.Writer.Do(d.DB, nil, func(txn *sql.Tx) error {
 		return d.ReportedEventsTable.DeleteReportedEvent(ctx, txn, reportID)
 	})
+}
+
+// IsRoomPartialState returns true if the room has partial state from a faster join (MSC3706)
+func (d *Database) IsRoomPartialState(ctx context.Context, roomNID types.RoomNID) (bool, error) {
+	return d.PartialStateTable.SelectPartialStateRoom(ctx, nil, roomNID)
+}
+
+// GetPartialStateServers returns the list of servers known to be in a partial state room
+func (d *Database) GetPartialStateServers(ctx context.Context, roomNID types.RoomNID) ([]string, error) {
+	return d.PartialStateTable.SelectPartialStateServers(ctx, nil, roomNID)
+}
+
+// SetRoomPartialState marks a room as having partial state after a faster join
+func (d *Database) SetRoomPartialState(ctx context.Context, roomNID types.RoomNID, joinEventNID types.EventNID, joinedVia string, serversInRoom []string) error {
+	return d.Writer.Do(d.DB, nil, func(txn *sql.Tx) error {
+		return d.PartialStateTable.InsertPartialStateRoom(ctx, txn, roomNID, joinEventNID, joinedVia, serversInRoom)
+	})
+}
+
+// ClearRoomPartialState removes the partial state flag from a room after state has been fully synced
+func (d *Database) ClearRoomPartialState(ctx context.Context, roomNID types.RoomNID) error {
+	return d.Writer.Do(d.DB, nil, func(txn *sql.Tx) error {
+		return d.PartialStateTable.DeletePartialStateRoom(ctx, txn, roomNID)
+	})
+}
+
+// GetAllPartialStateRooms returns all rooms that currently have partial state
+func (d *Database) GetAllPartialStateRooms(ctx context.Context) ([]types.RoomNID, error) {
+	return d.PartialStateTable.SelectAllPartialStateRooms(ctx, nil)
 }
 
 // findRoomNameAndCanonicalAlias loops over events to find the corresponding room name and canonicalAlias

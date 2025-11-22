@@ -214,6 +214,20 @@ type Purge interface {
 	) error
 }
 
+// PartialState tracks rooms with partial state from MSC3706 faster joins
+type PartialState interface {
+	// InsertPartialStateRoom inserts a new partial state room entry
+	InsertPartialStateRoom(ctx context.Context, txn *sql.Tx, roomNID types.RoomNID, joinEventNID types.EventNID, joinedVia string, serversInRoom []string) error
+	// SelectPartialStateRoom returns true if the room has partial state
+	SelectPartialStateRoom(ctx context.Context, txn *sql.Tx, roomNID types.RoomNID) (bool, error)
+	// SelectPartialStateServers returns the servers known to be in a partial state room
+	SelectPartialStateServers(ctx context.Context, txn *sql.Tx, roomNID types.RoomNID) ([]string, error)
+	// SelectAllPartialStateRooms returns all rooms with partial state
+	SelectAllPartialStateRooms(ctx context.Context, txn *sql.Tx) ([]types.RoomNID, error)
+	// DeletePartialStateRoom removes a room from partial state tracking
+	DeletePartialStateRoom(ctx context.Context, txn *sql.Tx, roomNID types.RoomNID) error
+}
+
 type UserRoomKeys interface {
 	// InsertUserRoomPrivatePublicKey inserts the given private key as well as the public key for it. This should be used
 	// when creating keys locally.

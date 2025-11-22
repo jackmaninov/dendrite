@@ -192,6 +192,18 @@ type Database interface {
 	QueryAdminEventReports(ctx context.Context, from uint64, limit uint64, backwards bool, userID string, roomID string) ([]api.QueryAdminEventReportsResponse, int64, error)
 	QueryAdminEventReport(ctx context.Context, reportID uint64) (api.QueryAdminEventReportResponse, error)
 	AdminDeleteEventReport(ctx context.Context, reportID uint64) error
+
+	// Partial state methods for MSC3706 faster joins
+	// IsRoomPartialState returns true if the room has partial state from a faster join
+	IsRoomPartialState(ctx context.Context, roomNID types.RoomNID) (bool, error)
+	// GetPartialStateServers returns the list of servers known to be in a partial state room
+	GetPartialStateServers(ctx context.Context, roomNID types.RoomNID) ([]string, error)
+	// SetRoomPartialState marks a room as having partial state after a faster join
+	SetRoomPartialState(ctx context.Context, roomNID types.RoomNID, joinEventNID types.EventNID, joinedVia string, serversInRoom []string) error
+	// ClearRoomPartialState removes the partial state flag from a room after state has been fully synced
+	ClearRoomPartialState(ctx context.Context, roomNID types.RoomNID) error
+	// GetAllPartialStateRooms returns all rooms that currently have partial state
+	GetAllPartialStateRooms(ctx context.Context) ([]types.RoomNID, error)
 }
 
 type UserRoomKeys interface {
