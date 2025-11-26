@@ -162,4 +162,4 @@ go 1.23.0
 
 toolchain go1.24.3
 
-replace github.com/matrix-org/gomatrixserverlib => ../gomatrixserverlib
+replace github.com/matrix-org/gomatrixserverlib => github.com/jackmaninov/gomatrixserverlib v0.0.0-20250103000000-73393443b42e
