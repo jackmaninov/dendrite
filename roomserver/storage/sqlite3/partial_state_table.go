@@ -60,6 +60,9 @@ const selectAllPartialStateRoomsSQL = "" +
 const deletePartialStateRoomSQL = "" +
 	"DELETE FROM roomserver_partial_state_rooms WHERE room_nid = $1"
 
+const deletePartialStateServersSQL = "" +
+	"DELETE FROM roomserver_partial_state_rooms_servers WHERE room_nid = $1"
+
 type partialStateStatements struct {
 	db                               *sql.DB
 	insertPartialStateRoomStmt       *sql.Stmt
@@ -68,6 +71,7 @@ type partialStateStatements struct {
 	selectPartialStateServersStmt    *sql.Stmt
 	selectAllPartialStateRoomsStmt   *sql.Stmt
 	deletePartialStateRoomStmt       *sql.Stmt
+	deletePartialStateServersStmt    *sql.Stmt
 }
 
 func CreatePartialStateTable(db *sql.DB) error {
@@ -85,6 +89,7 @@ func PreparePartialStateTable(db *sql.DB) (tables.PartialState, error) {
 		{&s.selectPartialStateServersStmt, selectPartialStateServersSQL},
 		{&s.selectAllPartialStateRoomsStmt, selectAllPartialStateRoomsSQL},
 		{&s.deletePartialStateRoomStmt, deletePartialStateRoomSQL},
+		{&s.deletePartialStateServersStmt, deletePartialStateServersSQL},
 	}.Prepare(db)
 }
 
@@ -171,6 +176,12 @@ func (s *partialStateStatements) SelectAllPartialStateRooms(
 func (s *partialStateStatements) DeletePartialStateRoom(
 	ctx context.Context, txn *sql.Tx, roomNID types.RoomNID,
 ) error {
+	// Delete servers first (SQLite doesn't enforce foreign key cascades by default)
+	serversStmt := sqlutil.TxStmt(txn, s.deletePartialStateServersStmt)
+	if _, err := serversStmt.ExecContext(ctx, roomNID); err != nil {
+		return err
+	}
+	// Delete the room entry
 	stmt := sqlutil.TxStmt(txn, s.deletePartialStateRoomStmt)
 	_, err := stmt.ExecContext(ctx, roomNID)
 	return err
