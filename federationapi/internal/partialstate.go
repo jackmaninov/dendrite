@@ -6,6 +6,8 @@
 package internal
 
 import (
+	"math"
+	"math/rand"
 	"sync"
 	"time"
 
@@ -19,18 +21,32 @@ import (
 
 const (
 	partialStateWorkerCount = 4
-	partialStateRetryDelay  = time.Minute * 5
+	// Initial backoff delay after first failure
+	partialStateMinBackoff = time.Minute * 1
+	// Maximum backoff delay (cap)
+	partialStateMaxBackoff = time.Hour * 1
+	// Maximum number of retries before giving up on a room
+	partialStateMaxRetries = 16
+	// Jitter bounds for backoff calculation
+	maxJitterMultiplier = 1.4
+	minJitterMultiplier = 0.8
 )
+
+// roomRetryInfo tracks retry state for a single room
+type roomRetryInfo struct {
+	retryAt    time.Time
+	retryCount uint32
+}
 
 // PartialStateWorker handles background resync of rooms with partial state from MSC3706 faster joins.
 // After a partial state join, this worker fetches the full room state in the background.
 type PartialStateWorker struct {
-	process   *process.ProcessContext
-	rsAPI     roomserverAPI.FederationRoomserverAPI
-	fedAPI    *FederationInternalAPI
-	workerCh  chan types.RoomNID
-	retryMu   sync.Mutex
-	retryMap  map[types.RoomNID]time.Time
+	process  *process.ProcessContext
+	rsAPI    roomserverAPI.FederationRoomserverAPI
+	fedAPI   *FederationInternalAPI
+	workerCh chan types.RoomNID
+	retryMu  sync.Mutex
+	retryMap map[types.RoomNID]*roomRetryInfo
 }
 
 // NewPartialStateWorker creates a new partial state worker
@@ -44,8 +60,24 @@ func NewPartialStateWorker(
 		rsAPI:    rsAPI,
 		fedAPI:   fedAPI,
 		workerCh: make(chan types.RoomNID, 100),
-		retryMap: make(map[types.RoomNID]time.Time),
+		retryMap: make(map[types.RoomNID]*roomRetryInfo),
 	}
+}
+
+// backoffDuration calculates the backoff duration for a given retry count using
+// exponential backoff with jitter, similar to the federation queue statistics.
+func (w *PartialStateWorker) backoffDuration(retryCount uint32) time.Duration {
+	// Add jitter to minimize thundering herd effects
+	jitter := rand.Float64()*(maxJitterMultiplier-minJitterMultiplier) + minJitterMultiplier
+
+	// Exponential backoff: minBackoff * 2^retryCount, capped at maxBackoff
+	backoff := float64(partialStateMinBackoff) * math.Pow(2, float64(retryCount)) * jitter
+
+	duration := time.Duration(backoff)
+	if duration > partialStateMaxBackoff {
+		duration = partialStateMaxBackoff
+	}
+	return duration
 }
 
 // Start begins the partial state worker, queuing all rooms with partial state for processing
@@ -92,10 +124,13 @@ func (w *PartialStateWorker) QueueRoom(roomNID types.RoomNID) {
 	select {
 	case w.workerCh <- roomNID:
 	default:
-		// Channel full, add to retry map
+		// Channel full, add to retry map with no retry count increment
 		w.retryMu.Lock()
 		if _, exists := w.retryMap[roomNID]; !exists {
-			w.retryMap[roomNID] = time.Now().Add(time.Second * 30)
+			w.retryMap[roomNID] = &roomRetryInfo{
+				retryAt:    time.Now().Add(time.Second * 30),
+				retryCount: 0,
+			}
 		}
 		w.retryMu.Unlock()
 	}
@@ -111,14 +146,40 @@ func (w *PartialStateWorker) worker(workerID int) {
 		}
 
 		if err := w.processRoom(roomNID); err != nil {
-			logrus.WithError(err).WithFields(logrus.Fields{
-				"room_nid":  roomNID,
-				"worker_id": workerID,
-			}).Warn("Failed to resync partial state room, will retry")
-
-			// Schedule retry
+			// Get current retry count
 			w.retryMu.Lock()
-			w.retryMap[roomNID] = time.Now().Add(partialStateRetryDelay)
+			info, exists := w.retryMap[roomNID]
+			if !exists {
+				info = &roomRetryInfo{retryCount: 0}
+			}
+			info.retryCount++
+
+			logger := logrus.WithFields(logrus.Fields{
+				"room_nid":    roomNID,
+				"worker_id":   workerID,
+				"retry_count": info.retryCount,
+			})
+
+			// Check if we've exceeded max retries
+			if info.retryCount >= partialStateMaxRetries {
+				logger.WithError(err).Error("Giving up on partial state resync after max retries")
+				// Remove from retry map - we're giving up
+				delete(w.retryMap, roomNID)
+				w.retryMu.Unlock()
+				continue
+			}
+
+			// Schedule retry with exponential backoff
+			backoff := w.backoffDuration(info.retryCount)
+			info.retryAt = time.Now().Add(backoff)
+			w.retryMap[roomNID] = info
+			w.retryMu.Unlock()
+
+			logger.WithError(err).WithField("retry_in", backoff).Warn("Failed to resync partial state room, will retry with backoff")
+		} else {
+			// Success - clear retry info
+			w.retryMu.Lock()
+			delete(w.retryMap, roomNID)
 			w.retryMu.Unlock()
 		}
 	}
@@ -137,18 +198,22 @@ func (w *PartialStateWorker) retryLoop() {
 			w.retryMu.Lock()
 			now := time.Now()
 			var toRetry []types.RoomNID
-			for roomNID, retryAt := range w.retryMap {
-				if now.After(retryAt) {
+			for roomNID, info := range w.retryMap {
+				if now.After(info.retryAt) {
 					toRetry = append(toRetry, roomNID)
 				}
 			}
-			for _, roomNID := range toRetry {
-				delete(w.retryMap, roomNID)
-			}
+			// Don't delete from retryMap here - the worker will update it on failure
+			// or delete it on success. We only need to re-queue the room.
 			w.retryMu.Unlock()
 
 			for _, roomNID := range toRetry {
-				w.QueueRoom(roomNID)
+				// Send directly to channel instead of QueueRoom to preserve retry state
+				select {
+				case w.workerCh <- roomNID:
+				default:
+					// Channel full, will be picked up on next tick
+				}
 			}
 		}
 	}
