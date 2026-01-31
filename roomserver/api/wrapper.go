@@ -64,10 +64,25 @@ func SendEventWithState(
 		})
 	}
 
+	// Build state event IDs from state events. When members_omitted=true in
+	// send_join response (MSC3706), member events are only in auth_events,
+	// not state_events. We need to include them in the state snapshot.
 	stateEvents := state.GetStateEvents().UntrustedEvents(event.Version())
-	stateEventIDs := make([]string, len(stateEvents))
-	for i := range stateEvents {
-		stateEventIDs[i] = stateEvents[i].EventID()
+	stateEventIDSet := make(map[string]bool, len(stateEvents))
+	for _, ev := range stateEvents {
+		stateEventIDSet[ev.EventID()] = true
+	}
+	// Also include any member events from auth_events that have state_keys
+	// (i.e., are state events). This handles the members_omitted case.
+	authEvents := state.GetAuthEvents().UntrustedEvents(event.Version())
+	for _, ev := range authEvents {
+		if ev.StateKey() != nil && ev.Type() == spec.MRoomMember {
+			stateEventIDSet[ev.EventID()] = true
+		}
+	}
+	stateEventIDs := make([]string, 0, len(stateEventIDSet))
+	for id := range stateEventIDSet {
+		stateEventIDs = append(stateEventIDs, id)
 	}
 
 	logrus.WithContext(ctx).WithFields(logrus.Fields{
